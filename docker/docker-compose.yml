@@ -1,0 +1,17 @@
+version: '3'
+services:
+  nakashima:
+    build: .
+    shm_size: '32gb'
+    volumes:
+      - ./../LAV-CVPR21:/home/app_user/src
+      - /mnt/ubuntusub/deeplearning:/home/app_user/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    tty: true
+    stdin_open: true
