@@ -9,13 +9,14 @@ import sys
 
 def checkinglabel(file, target):
     mat = scipy.io.loadmat(file)
+    print(mat["action"][0])
     if mat["action"][0] == target:
         return True
     else:
         return False
 
 
-def split_dataset(input_dataset_path, output_dataset_path, split_ratio=0.8):
+def split_dataset(input_dataset_path, output_dataset_path, split_ratio, target_label):
     # データセット内の動画クリップのリストを取得
     clip_list = os.listdir(os.path.join(input_dataset_path, "frames"))
 
@@ -31,9 +32,9 @@ def split_dataset(input_dataset_path, output_dataset_path, split_ratio=0.8):
 
         # 対応するラベルファイルのパス
         label_file = os.path.join(input_dataset_path, "labels", clip + ".mat")
-
+        print(clip_path)
         # ラベルが"Study"であるかを確認
-        if checkinglabel(label_file, "baseball_swing"):
+        if checkinglabel(label_file, target_label):
             # トレーニングとバリデーションセットに分割
             if random.random() < split_ratio:
                 split_dir = train_dir
@@ -60,16 +61,18 @@ if __name__ == "__main__":
     )
 
     # コマンドライン引数を解析
+    target_label = "baseball_pitch"
+
     args = parser.parse_args()
-    input_dataset_path = (
-        "/media/shunsukeotake/Ubuntu(Dataset)1/dataset_origin/Penn_Action"
-    )
-    output_dataset_path = (
-        "/media/shunsukeotake/Ubuntu(Dataset)1/dataset/Penn_Action/baseball_swing"
+    input_dataset_path = "/root/src/dataset/Penn_Action"
+    output_dataset_path = os.path.join(
+        "/root/src/dataset/Penn_Action/data", target_label
     )
 
     # データセットを分割
-    split_dataset(input_dataset_path, output_dataset_path, args.split_ratio)
+    split_dataset(
+        input_dataset_path, output_dataset_path, args.split_ratio, target_label
+    )
 
 
 # # matファイルの中身を確認するためのコード
