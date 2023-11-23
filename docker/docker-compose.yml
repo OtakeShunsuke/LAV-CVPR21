@@ -4,8 +4,7 @@ services:
     build: .
     shm_size: '32gb'
     volumes:
-      - ./../LAV-CVPR21:/home/app_user/src
-      - /mnt/ubuntusub/deeplearning:/home/app_user/data
+      - /home/otake/LAV-CVPR21:/root/src
     deploy:
       resources:
         reservations:

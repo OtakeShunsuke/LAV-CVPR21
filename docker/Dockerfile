@@ -25,8 +25,6 @@ RUN pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-USER app_user
-
 RUN export GIT_SSL_NO_VERIFY=1 \
     && mkdir -p ${HOME}/dotfiles \
     && git clone https://github.com/OtakeShunsuke/dotfiles.git ${HOME}/dotfiles \
