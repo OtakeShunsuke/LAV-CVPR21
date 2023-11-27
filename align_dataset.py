@@ -98,13 +98,7 @@ class AlignData(Dataset):
         neg_example=False,
         transform=False,
         flatten=False,
-        target_pennaction=None,
     ):
-        # PennActionデータセットのフォルダ構成のために追加---------------------------------
-        if not target_pennaction == None:
-            path = os.path.join(path, target_pennaction)
-        # ---------------------------------------------------------------------------
-
         self.act_sequences = sorted(glob.glob(os.path.join(path, "*")))
         self.n_sequences = len(self.act_sequences)
 
