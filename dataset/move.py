@@ -16,6 +16,12 @@ def checkinglabel(file, target):
         return False
 
 
+# ラベル内容のアウトプット関数
+def outputlabel(file):
+    mat = scipy.io.loadmat(file)
+    return mat["action"][0]
+
+
 def split_dataset(input_dataset_path, output_dataset_path, split_ratio, target_label):
     # データセット内の動画クリップのリストを取得
     clip_list = os.listdir(os.path.join(input_dataset_path, "frames"))
@@ -32,22 +38,40 @@ def split_dataset(input_dataset_path, output_dataset_path, split_ratio, target_l
 
         # 対応するラベルファイルのパス
         label_file = os.path.join(input_dataset_path, "labels", clip + ".mat")
-        print(clip_path)
-        # ラベルが"Study"であるかを確認
-        if checkinglabel(label_file, target_label):
-            # トレーニングとバリデーションセットに分割
-            if random.random() < split_ratio:
-                split_dir = train_dir
-            else:
-                split_dir = val_dir
 
-            # 動画クリップの新しいパスを作成
-            # ビデオ単位のフォルダ名を取得
-            video_folder = os.path.basename(clip_path)
-            clip_dest = os.path.join(split_dir, video_folder)
+        label_train_dir = os.path.join(train_dir, outputlabel(label_file))
+        label_val_dir = os.path.join(val_dir, outputlabel(label_file))
 
-            # 新しいパスに画像をコピー
-            shutil.copytree(clip_path, clip_dest)
+        os.makedirs(label_train_dir, exist_ok=True)
+        os.makedirs(label_val_dir, exist_ok=True)
+
+        if random.random() < split_ratio:
+            split_dir = label_train_dir
+        else:
+            split_dir = label_val_dir
+
+        # 動画クリップの新しいパスを作成
+        # ビデオ単位のフォルダ名を取得
+        video_folder = os.path.basename(clip_path)
+        clip_dest = os.path.join(split_dir, video_folder)
+
+        shutil.copytree(clip_path, clip_dest)
+
+        # # ラベルが"Study"であるかを確認
+        # if checkinglabel(label_file, target_label):
+        #     # トレーニングとバリデーションセットに分割
+        #     if random.random() < split_ratio:
+        #         split_dir = train_dir
+        #     else:
+        #         split_dir = val_dir
+
+        #     # 動画クリップの新しいパスを作成
+        #     # ビデオ単位のフォルダ名を取得
+        #     video_folder = os.path.basename(clip_path)
+        #     clip_dest = os.path.join(split_dir, video_folder)
+
+        #     # 新しいパスに画像をコピー
+        #     shutil.copytree(clip_path, clip_dest)
 
     # 完了メッセージ
     print("データセットの分割が完了しました。")
@@ -66,7 +90,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     input_dataset_path = "/root/src/dataset/Penn_Action"
     output_dataset_path = os.path.join(
-        "/root/src/dataset/Penn_Action/data", target_label
+        "/root/src/dataset/Penn_Action/", "all_divided_dataset"
     )
 
     # データセットを分割
