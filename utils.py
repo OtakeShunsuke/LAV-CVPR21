@@ -16,8 +16,10 @@ import pytorch_lightning as pl
 
 BN_TYPES = (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d, torch.nn.BatchNorm3d)
 
+
 def normalize(img):
-    return img / 255.
+    return img / 255.0
+
 
 def get_totensor_transform(is_video):
     if is_video:
@@ -25,90 +27,103 @@ def get_totensor_transform(is_video):
     else:
         return transforms.Compose([transforms.ToTensor()])
 
-def get_images(paths):
 
+def get_images(paths):
     imgs = []
     for p in paths:
         imgs.append(normalize(imread(p)))
 
     return np.array(imgs, dtype=np.float32)
 
-def get_transformed_images(paths, transform):
 
+def get_transformed_images(paths, transform):
     imgs = []
     for p in paths:
         imgs.append(transform(Image.open(p)))
 
     imgs = torch.stack(imgs)
-    
+
     return imgs
 
-def get_pil_images(paths):
 
+def get_pil_images(paths):
     imgs = []
     for p in paths:
         imgs.append(Image.open(p))
-    
+
     return imgs
 
+
 def get_transforms(augment):
-    
     seq_transforms = []
 
     if augment:
-        seq_transforms.append(tv.ColorJitterVideo(
-            CONFIG.AUGMENTATION.BRIGHTNESS_DELTA,
-            CONFIG.AUGMENTATION.CONTRAST_DELTA,
-            CONFIG.AUGMENTATION.HUE_DELTA,
-            CONFIG.AUGMENTATION.SATURATION_DELTA
-        ))
+        seq_transforms.append(
+            tv.ColorJitterVideo(
+                CONFIG.AUGMENTATION.BRIGHTNESS_DELTA,
+                CONFIG.AUGMENTATION.CONTRAST_DELTA,
+                CONFIG.AUGMENTATION.HUE_DELTA,
+                CONFIG.AUGMENTATION.SATURATION_DELTA,
+            )
+        )
 
         if not CONFIG.AUGMENTATION.RANDOM_CROP:
-            seq_transforms.append(tv.ResizeVideo(size=(CONFIG.DATA.IMAGE_SIZE, CONFIG.DATA.IMAGE_SIZE)))
+            seq_transforms.append(
+                tv.ResizeVideo(size=(CONFIG.DATA.IMAGE_SIZE, CONFIG.DATA.IMAGE_SIZE))
+            )
 
         seq_transforms.append(tv.ToTensorVideo())
 
         if CONFIG.AUGMENTATION.RANDOM_FLIP:
             seq_transforms.append(tv.RandomHorizontalFlipVideo(p=0.5))
-        
+
         if CONFIG.AUGMENTATION.RANDOM_CROP:
-            seq_transforms.append(tv.RandomResizedCropVideo(size=CONFIG.DATA.IMAGE_SIZE))
-    
+            seq_transforms.append(
+                tv.RandomResizedCropVideo(size=CONFIG.DATA.IMAGE_SIZE)
+            )
+
     else:
         if CONFIG.AUGMENTATION.RANDOM_CROP:
             seq_transforms.append(tv.ToTensorVideo())
-            seq_transforms.append(tv.CenterResizedCropVideo(size=CONFIG.DATA.IMAGE_SIZE))
+            seq_transforms.append(
+                tv.CenterResizedCropVideo(size=CONFIG.DATA.IMAGE_SIZE)
+            )
         else:
-            seq_transforms.append(tv.ResizeVideo(size=(CONFIG.DATA.IMAGE_SIZE, CONFIG.DATA.IMAGE_SIZE)))
+            seq_transforms.append(
+                tv.ResizeVideo(size=(CONFIG.DATA.IMAGE_SIZE, CONFIG.DATA.IMAGE_SIZE))
+            )
             seq_transforms.append(tv.ToTensorVideo())
 
-    seq_transforms.append(tv.NormalizeVideo(mean=[0.485, 0.456, 0.406],
-                                            std=[0.229, 0.224, 0.225]))
+    seq_transforms.append(
+        tv.NormalizeVideo(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    )
 
     return transforms.Compose(seq_transforms)
 
-def arg_to_numpy(f):
 
+def arg_to_numpy(f):
     def wrapper(x):
         if isinstance(x, torch.Tensor):
             x = x.detach().cpu().numpy()
         return f(x)
+
     return wrapper
+
 
 @arg_to_numpy
 def plot_to_image(arr):
-    
     arr = arr.squeeze()
     figure = plt.figure()
     plt.imshow(arr)
     plt.colorbar()
     buf = io.BytesIO()
-    plt.savefig(buf, format='jpg')
+    plt.savefig(buf, format="jpg")
     plt.close(figure)
     buf.seek(0)
     img = imread(buf)
 
     return img.transpose((2, 0, 1))
+
 
 def _make_trainable(module):
     """Unfreeze a given module.
@@ -145,6 +160,7 @@ def _recursive_freeze(module, train_bn=True):
         for child in children:
             _recursive_freeze(module=child, train_bn=train_bn)
 
+
 def freeze(module, n=-1, train_bn=True):
     """Freeze the layers up to index n.
     Operates in-place.
@@ -162,10 +178,11 @@ def freeze(module, n=-1, train_bn=True):
     n_max = len(children) if n == -1 else int(n)
     for child in children:
         if idx < n_max:
-            #print('-----------------',child,'-------------')
+            # print('-----------------',child,'-------------')
             _recursive_freeze(module=child, train_bn=train_bn)
         else:
             _make_trainable(module=child)
+
 
 def _recursive_freeze_bn_only(module):
     """Freeze the BN-layers of a given module.
@@ -177,7 +194,7 @@ def _recursive_freeze_bn_only(module):
     children = list(module.children())
     if not children:
         if isinstance(module, BN_TYPES):
-            print('Froze ',module)
+            print("Froze ", module)
             for param in module.parameters():
                 param.requires_grad = False
             module.eval()
@@ -187,6 +204,7 @@ def _recursive_freeze_bn_only(module):
     else:
         for child in children:
             _recursive_freeze_bn_only(module=child)
+
 
 def freeze_bn_only(module, n=-1):
     """Freeze the BN-layers up to index n.
@@ -203,10 +221,11 @@ def freeze_bn_only(module, n=-1):
     n_max = len(children) if n == -1 else int(n)
     for child in children:
         if idx < n_max:
-            #print('-----------------',child,'-------------')
+            # print('-----------------',child,'-------------')
             _recursive_freeze_bn_only(module=child)
         else:
             _make_trainable(module=child)
+
 
 class CheckpointEveryNSteps(pl.Callback):
     """
@@ -237,7 +256,7 @@ class CheckpointEveryNSteps(pl.Callback):
         os.makedirs(self.filepath, exist_ok=True)
 
     def on_batch_end(self, trainer: pl.Trainer, _):
-        """ Check if we should save a checkpoint after every train batch """
+        """Check if we should save a checkpoint after every train batch"""
         epoch = trainer.current_epoch
         global_step = trainer.global_step
         if global_step % self.save_step_frequency == 0:
@@ -247,6 +266,8 @@ class CheckpointEveryNSteps(pl.Callback):
                 filename = f"{self.prefix}lAV_epoch={epoch}_step={global_step}.ckpt"
             ckpt_path = os.path.join(self.filepath, filename)
             trainer.save_checkpoint(ckpt_path)
+
+
 import os, glob
 import io
 import numpy as np
@@ -265,8 +286,10 @@ import pytorch_lightning as pl
 
 BN_TYPES = (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d, torch.nn.BatchNorm3d)
 
+
 def normalize(img):
-    return img / 255.
+    return img / 255.0
+
 
 def get_totensor_transform(is_video):
     if is_video:
@@ -274,90 +297,103 @@ def get_totensor_transform(is_video):
     else:
         return transforms.Compose([transforms.ToTensor()])
 
-def get_images(paths):
 
+def get_images(paths):
     imgs = []
     for p in paths:
         imgs.append(normalize(imread(p)))
 
     return np.array(imgs, dtype=np.float32)
 
-def get_transformed_images(paths, transform):
 
+def get_transformed_images(paths, transform):
     imgs = []
     for p in paths:
         imgs.append(transform(Image.open(p)))
 
     imgs = torch.stack(imgs)
-    
+
     return imgs
 
-def get_pil_images(paths):
 
+def get_pil_images(paths):
     imgs = []
     for p in paths:
         imgs.append(Image.open(p))
-    
+
     return imgs
 
+
 def get_transforms(augment):
-    
     seq_transforms = []
 
     if augment:
-        seq_transforms.append(tv.ColorJitterVideo(
-            CONFIG.AUGMENTATION.BRIGHTNESS_DELTA,
-            CONFIG.AUGMENTATION.CONTRAST_DELTA,
-            CONFIG.AUGMENTATION.HUE_DELTA,
-            CONFIG.AUGMENTATION.SATURATION_DELTA
-        ))
+        seq_transforms.append(
+            tv.ColorJitterVideo(
+                CONFIG.AUGMENTATION.BRIGHTNESS_DELTA,
+                CONFIG.AUGMENTATION.CONTRAST_DELTA,
+                CONFIG.AUGMENTATION.HUE_DELTA,
+                CONFIG.AUGMENTATION.SATURATION_DELTA,
+            )
+        )
 
         if not CONFIG.AUGMENTATION.RANDOM_CROP:
-            seq_transforms.append(tv.ResizeVideo(size=(CONFIG.DATA.IMAGE_SIZE, CONFIG.DATA.IMAGE_SIZE)))
+            seq_transforms.append(
+                tv.ResizeVideo(size=(CONFIG.DATA.IMAGE_SIZE, CONFIG.DATA.IMAGE_SIZE))
+            )
 
         seq_transforms.append(tv.ToTensorVideo())
 
         if CONFIG.AUGMENTATION.RANDOM_FLIP:
             seq_transforms.append(tv.RandomHorizontalFlipVideo(p=0.5))
-        
+
         if CONFIG.AUGMENTATION.RANDOM_CROP:
-            seq_transforms.append(tv.RandomResizedCropVideo(size=CONFIG.DATA.IMAGE_SIZE))
-    
+            seq_transforms.append(
+                tv.RandomResizedCropVideo(size=CONFIG.DATA.IMAGE_SIZE)
+            )
+
     else:
         if CONFIG.AUGMENTATION.RANDOM_CROP:
             seq_transforms.append(tv.ToTensorVideo())
-            seq_transforms.append(tv.CenterResizedCropVideo(size=CONFIG.DATA.IMAGE_SIZE))
+            seq_transforms.append(
+                tv.CenterResizedCropVideo(size=CONFIG.DATA.IMAGE_SIZE)
+            )
         else:
-            seq_transforms.append(tv.ResizeVideo(size=(CONFIG.DATA.IMAGE_SIZE, CONFIG.DATA.IMAGE_SIZE)))
+            seq_transforms.append(
+                tv.ResizeVideo(size=(CONFIG.DATA.IMAGE_SIZE, CONFIG.DATA.IMAGE_SIZE))
+            )
             seq_transforms.append(tv.ToTensorVideo())
 
-    seq_transforms.append(tv.NormalizeVideo(mean=[0.485, 0.456, 0.406],
-                                            std=[0.229, 0.224, 0.225]))
+    seq_transforms.append(
+        tv.NormalizeVideo(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    )
 
     return transforms.Compose(seq_transforms)
 
-def arg_to_numpy(f):
 
+def arg_to_numpy(f):
     def wrapper(x):
         if isinstance(x, torch.Tensor):
             x = x.detach().cpu().numpy()
         return f(x)
+
     return wrapper
+
 
 @arg_to_numpy
 def plot_to_image(arr):
-    
     arr = arr.squeeze()
     figure = plt.figure()
     plt.imshow(arr)
     plt.colorbar()
     buf = io.BytesIO()
-    plt.savefig(buf, format='jpg')
+    plt.savefig(buf, format="jpg")
     plt.close(figure)
     buf.seek(0)
     img = imread(buf)
 
     return img.transpose((2, 0, 1))
+
 
 def _make_trainable(module):
     """Unfreeze a given module.
@@ -394,6 +430,7 @@ def _recursive_freeze(module, train_bn=True):
         for child in children:
             _recursive_freeze(module=child, train_bn=train_bn)
 
+
 def freeze(module, n=-1, train_bn=True):
     """Freeze the layers up to index n.
     Operates in-place.
@@ -411,10 +448,11 @@ def freeze(module, n=-1, train_bn=True):
     n_max = len(children) if n == -1 else int(n)
     for child in children:
         if idx < n_max:
-            #print('-----------------',child,'-------------')
+            # print('-----------------',child,'-------------')
             _recursive_freeze(module=child, train_bn=train_bn)
         else:
             _make_trainable(module=child)
+
 
 def _recursive_freeze_bn_only(module):
     """Freeze the BN-layers of a given module.
@@ -426,7 +464,7 @@ def _recursive_freeze_bn_only(module):
     children = list(module.children())
     if not children:
         if isinstance(module, BN_TYPES):
-            print('Froze ',module)
+            print("Froze ", module)
             for param in module.parameters():
                 param.requires_grad = False
             module.eval()
@@ -436,6 +474,7 @@ def _recursive_freeze_bn_only(module):
     else:
         for child in children:
             _recursive_freeze_bn_only(module=child)
+
 
 def freeze_bn_only(module, n=-1):
     """Freeze the BN-layers up to index n.
@@ -452,10 +491,11 @@ def freeze_bn_only(module, n=-1):
     n_max = len(children) if n == -1 else int(n)
     for child in children:
         if idx < n_max:
-            #print('-----------------',child,'-------------')
+            # print('-----------------',child,'-------------')
             _recursive_freeze_bn_only(module=child)
         else:
             _make_trainable(module=child)
+
 
 class CheckpointEveryNSteps(pl.Callback):
     """
@@ -486,7 +526,7 @@ class CheckpointEveryNSteps(pl.Callback):
         os.makedirs(self.filepath, exist_ok=True)
 
     def on_batch_end(self, trainer: pl.Trainer, _):
-        """ Check if we should save a checkpoint after every train batch """
+        """Check if we should save a checkpoint after every train batch"""
         epoch = trainer.current_epoch
         global_step = trainer.global_step
         if global_step % self.save_step_frequency == 0:
