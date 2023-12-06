@@ -59,6 +59,7 @@ def get_embeddings(model, data, labels_npy, args):
                     print(f"Seq: {i}, ", a_emb.shape)
 
                 seq_embs.append(a_emb.squeeze(0).detach().cpu().numpy())
+
                 seq_fpaths.extend(a_frames)
 
             seq_embs = np.concatenate(seq_embs, axis=0)
@@ -80,15 +81,25 @@ def get_embeddings(model, data, labels_npy, args):
 
 def main(ckpts, args):
     summary_dest = os.path.join(args.dest, "eval_logs")
+
+    result_path = os.path.join(args.dest, "eval_results/all_actions")
     os.makedirs(summary_dest, exist_ok=True)
+    os.makedirs(result_path, exist_ok=True)
+
+    result = dict()
 
     for ckpt in ckpts:
         writer = SummaryWriter(summary_dest, filename_suffix="eval_logs")
+
+        ckpt_result = dict()
 
         # get ckpt-step from the ckpt name
         _, ckpt_step = ckpt.split(".")[0].split("_")[-2:]
         ckpt_step = int(ckpt_step.split("=")[1])
         DEST = os.path.join(args.dest, "eval_step_{}".format(ckpt_step))
+
+        ckpt_epoch = ckpt.split(".")[0].split("epoc")[1].split("_")[0]
+        ckpt_epoch = int(ckpt_epoch.split("=")[1])
 
         device = f"cuda:{args.device}"
         model = AlignNet.load_from_checkpoint(ckpt, map_location=device)
@@ -109,15 +120,14 @@ def main(ckpts, args):
             data_path = args.data_path
         else:
             data_path = CONFIG.DATA_PATH
-        data_path = "/root/src/dataset/Penn_Action/data2/"
+        data_path = "/root/src/dataset/Penn_Action/all_divided_dataset/"
 
         train_path = os.path.join(data_path, "train")
         val_path = os.path.join(data_path, "val")
         # lab_train_path = os.path.join(data_path, 'labels', 'train')
         # lab_val_path = os.path.join(data_path, 'labels', 'val')
         print("args.model_path:", args.model_path)
-        lab_name = "_".join(args.model_path.split("/")[4].split("_")[:-1]) + "_val"
-        print(lab_name)
+        # lab_name = "_".join(args.model_path.split("/")[4].split("_")[:-1]) + "_val"
         # labels = np.load(f"/root/src/dataset/penn_action_labels/test/squats/{lab_name}.npy", allow_pickle=True).item()
         labels = np.load(
             "/root/src/dataset/penn_action_labels/all_data.npy", allow_pickle=True
@@ -151,13 +161,18 @@ def main(ckpts, args):
             print(f"train_act_name: {train_act_name}, val_act_name: {val_act_name}")
             assert train_act_name == val_act_name
 
+            # PennActionのための追加
+            if train_act_name != args.action_name and args.action_name is not None:
+                continue
             # if args.verbose:
             #     print(f'Getting embeddings for {train_act_name}...')
-            # train_embs, train_names, train_labels = get_embeddings(model, train_data, lab_train_path, args)
+            train_embs, train_names, train_labels = get_embeddings(
+                model, train_data, labels, args
+            )
             val_embs, val_names, val_labels = get_embeddings(
                 model, val_data, labels, args
             )
-            train_embs, train_names, train_labels = val_embs, val_names, val_labels
+            # train_embs, train_names, train_labels = val_embs, val_names, val_labels
 
             # # save embeddings
             os.makedirs(DEST, exist_ok=True)
@@ -222,6 +237,11 @@ def main(ckpts, args):
             writer.add_scalar(
                 f"kendalls_tau/val_{val_act_name}", val_tau, global_step=ckpt_step
             )
+            ckpt_result["action"] = train_act_name
+            ckpt_result["epoch"] = ckpt_epoch
+
+            ckpt_result["kendalls_tau/train"] = train_tau
+            ckpt_result["kendalls_tau/val"] = val_tau
 
             # Evaluating Phase Progression
         #             _train_dict = {'embs': train_embs, 'labels': train_labels}
@@ -239,6 +259,10 @@ def main(ckpts, args):
         writer.add_scalar("metrics/AP@10_val", ap10, global_step=ckpt_step)
         writer.add_scalar("metrics/AP@15_val", ap15, global_step=ckpt_step)
 
+        ckpt_result["metrics/AP@5_val"] = ap5
+        ckpt_result["metrics/AP@10_val"] = ap10
+        ckpt_result["metrics/AP@15_val"] = ap15
+
         writer.add_scalar(
             "metrics/all_classification_train",
             train_classification,
@@ -254,6 +278,11 @@ def main(ckpts, args):
         writer.add_scalar(
             "metrics/all_kendalls_tau_val", val_kendalls_tau, global_step=ckpt_step
         )
+
+        ckpt_result["metrics/all_classification_train"] = train_classification
+        ckpt_result["metrics/all_classification_val"] = val_classification
+        ckpt_result["metrics/all_kendalls_tau_train"] = train_kendalls_tau
+        ckpt_result["metrics/all_kendalls_tau_val"] = val_kendalls_tau
 
         # writer.add_scalar('metrics/all_phase_progression_train', train_phase_prog, global_step=ckpt_step)
         # writer.add_scalar('metrics/all_phase_progression_val', val_phase_prog, global_step=ckpt_step)
@@ -289,6 +318,10 @@ def main(ckpts, args):
 
         writer.close()
 
+        result[ckpt_step] = ckpt_result
+
+    np.save(os.path.join(result_path, "result_{}.npy".format(args.action_name)), result)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -302,11 +335,14 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=int, default=0, help="Cuda device to be used")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--num_frames", type=int, default=None, help="Path to dataset")
+    parser.add_argument(
+        "--action_name", type=str, default=None, help="Select action name"
+    )
 
     args = parser.parse_args()
 
     if os.path.isdir(args.model_path):
-        ckpts = natsorted(glob.glob(os.path.join(args.model_path, "*")))
+        ckpts = natsorted(glob.glob(os.path.join(args.model_path, "*.ckpt")))
     else:
         ckpts = [args.model_path]
 
