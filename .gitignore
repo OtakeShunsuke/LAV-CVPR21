@@ -12,3 +12,12 @@ evals/__pycache__/phase_progression.cpython-38.pyc
 preprocessing/__pycache__/__init__.cpython-38.pyc
 preprocessing/__pycache__/functional_video.cpython-38.pyc
 preprocessing/__pycache__/transforms_video.cpython-38.pyc
+*.ckpt
+*.pth
+*.json
+*.log
+*.wandb
+*.txt
+*.yaml
+evals/__pycache__/datasets.cpython-38.pyc
+.gitignore
