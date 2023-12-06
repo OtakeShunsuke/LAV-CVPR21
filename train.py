@@ -5,6 +5,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import losses
+import wandb
 
 import os
 import numpy as np
@@ -17,6 +18,7 @@ from config import CONFIG
 # from ViViT import ViViT
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.core.lightning import LightningModule
+from pytorch_lightning.loggers import WandbLogger
 
 import torch
 import torch.nn as nn
@@ -70,11 +72,11 @@ class AlignNet(LightningModule):
 
         # PennActionデータセットのフォルダ構成のために追加---------------------------------
         self.target_pennaction = config.PENN_ACTION.NAME
-        # ---------------------------------------------------------------------------
+        # -----------------------------------------------------------------------------
 
         self.hparams.config = config
 
-        self.save_hyperparameters()
+        # self.save_hyperparameters()
 
     def train(self, mode=True):
         super(AlignNet, self).train(mode=mode)
@@ -94,6 +96,7 @@ class AlignNet(LightningModule):
         return x
 
     def training_step(self, batch, batch_idx):
+        print("batch_idx: {}".format(batch_idx))
         (a_X, _, a_steps, a_seq_len), (b_X, _, b_steps, b_seq_len) = batch
 
         X = torch.cat([a_X, b_X])
@@ -115,7 +118,7 @@ class AlignNet(LightningModule):
         loss = loss / self.batch_size
 
         tensorboard_logs = {"train_loss": loss}
-
+        self.log("train_loss", loss)
         return {"loss": loss, "log": tensorboard_logs}
 
     def validation_step(self, batch, batch_idx):
@@ -142,6 +145,7 @@ class AlignNet(LightningModule):
         loss = loss / self.batch_size
 
         tensorboard_logs = {"val_loss": loss}
+        self.log("val_loss", loss)
 
         return {"val_loss": loss, "log": tensorboard_logs}
 
@@ -242,13 +246,25 @@ def main(hparams):
 
     # PennActionデータセットのフォルダ構成のために追加---------------------------------
     now = datetime.datetime.now()
-    file_tiemstamp = now.strftime("%Y%m%d%H%M%S")
+    if hparams.TRAIN.DEBUG:
+        file_tiemstamp = "debug"
+    else:
+        file_tiemstamp = now.strftime("%Y%m%d%H%M%S")
     if not hparams.PENN_ACTION.NAME == None:
         root_path = os.path.join(hparams.ROOT, hparams.PENN_ACTION.NAME)
         root_path = os.path.join(root_path, file_tiemstamp)
+        wandb_logger = WandbLogger(
+            project="LAV",
+            name="LAV_PennAction={}_{}".format(
+                hparams.PENN_ACTION.NAME, file_tiemstamp
+            ),
+            log_model="all",
+        )
     else:
         root_path = os.path.join(hparams.ROOT, file_tiemstamp)
+        wandb_logger = WandbLogger(project="LAV", name="LAV_{}".format(file_tiemstamp))
     # ---------------------------------------------------------------------------
+
     checkpoint_path = os.path.join(root_path, "STEPS")
 
     try:
@@ -265,41 +281,46 @@ def main(hparams):
             deterministic=True,
             callbacks=[checkpoint_callback],
             check_val_every_n_epoch=1,
+            logger=wandb_logger,
+            # fast_dev_run=hparams.TRAIN.DEBUG,
         )
-
+        wandb_logger.experiment.config.update(hparams)
+        print(hparams)
+        wandb_logger.watch(model)
         trainer.fit(model)
         #  distributed_backend=dd_backend, row_log_interval=10 limit_val_batches=hparams.TRAIN.VAL_PERCENT
     except KeyboardInterrupt:
         pass
     finally:
-        trainer.save_checkpoint(
-            os.path.join(
-                checkpoint_path,
-                "final_model_l2norm-{}"
-                "_sigma-{}_alpha-{}"
-                "_lr-{}_bs-{}.pth".format(
-                    hparams.LOSSES.L2_NORMALIZE,
-                    hparams.LOSSES.SIGMA,
-                    hparams.LOSSES.ALPHA,
-                    hparams.TRAIN.LR,
-                    hparams.TRAIN.BATCH_SIZE,
-                ),
+        if not hparams.TRAIN.DEBUG:
+            trainer.save_checkpoint(
+                os.path.join(
+                    checkpoint_path,
+                    "final_model_l2norm-{}"
+                    "_sigma-{}_alpha-{}"
+                    "_lr-{}_bs-{}.pth".format(
+                        hparams.LOSSES.L2_NORMALIZE,
+                        hparams.LOSSES.SIGMA,
+                        hparams.LOSSES.ALPHA,
+                        hparams.TRAIN.LR,
+                        hparams.TRAIN.BATCH_SIZE,
+                    ),
+                )
             )
-        )
-        trainer.save_checkpoint(
-            os.path.join(
-                hparams.ROOT,
-                "final_model_l2norm-{}"
-                "_sigma-{}_alpha-{}"
-                "_lr-{}_bs-{}.pth".format(
-                    hparams.LOSSES.L2_NORMALIZE,
-                    hparams.LOSSES.SIGMA,
-                    hparams.LOSSES.ALPHA,
-                    hparams.TRAIN.LR,
-                    hparams.TRAIN.BATCH_SIZE,
-                ),
+            trainer.save_checkpoint(
+                os.path.join(
+                    hparams.ROOT,
+                    "final_model_l2norm-{}"
+                    "_sigma-{}_alpha-{}"
+                    "_lr-{}_bs-{}.pth".format(
+                        hparams.LOSSES.L2_NORMALIZE,
+                        hparams.LOSSES.SIGMA,
+                        hparams.LOSSES.ALPHA,
+                        hparams.TRAIN.LR,
+                        hparams.TRAIN.BATCH_SIZE,
+                    ),
+                )
             )
-        )
 
 
 if __name__ == "__main__":
@@ -321,6 +342,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--action_name", type=str, default=None, help="Select action name"
     )
+    parser.add_argument("--debug", type=bool, default=False, help="Debug mode")
 
     args = parser.parse_args()
 
@@ -340,5 +362,7 @@ if __name__ == "__main__":
         CONFIG.DATA.WORKERS = args.workers
     if args.action_name:
         CONFIG.PENN_ACTION.NAME = args.action_name
+    if args.debug:
+        CONFIG.TRAIN.DEBUG = args.debug
 
     main(CONFIG)
